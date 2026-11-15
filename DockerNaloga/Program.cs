@@ -1,4 +1,5 @@
 using DockerNaloga;
+using Microsoft.AspNetCore.Mvc;
 
 // Ustvarimo spletno aplikacijo (ASP.NET minimal API).
 var builder = WebApplication.CreateBuilder(args);
@@ -93,7 +94,8 @@ app.MapPost("/ponastavitev-gesla", (PonastavitevDto d) =>
 // Povezani podatki (naročila, ocene, komentarji ...) se izbrišejo sami (ON DELETE CASCADE v bazi).
 // Po brisanju uporabnika odjavimo.
 // ---------------------------------------------------------
-app.MapDelete("/racun", (BrisanjeDto d, HttpContext ctx) =>
+// [FromBody] je obvezen, ker DELETE telesa sicer ne prebere samodejno.
+app.MapDelete("/racun", ([FromBody] BrisanjeDto d, HttpContext ctx) =>
 {
     var id = ctx.Session.GetInt32("uid");
     if (id == null) return Results.Unauthorized();
