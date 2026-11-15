@@ -1,3 +1,4 @@
+
 using DockerNaloga;
 using Microsoft.AspNetCore.Mvc;
 
@@ -5,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 var builder = WebApplication.CreateBuilder(args);
 
 // Seja hrani podatke o prijavljenem uporabniku med zahtevki.
-// Shranjuje se v pomnilnik strežnika. Po ponovnem zagonu so vsi odjavljeni.
+// Shranjuje se v pomnilniku strežnika. Po ponovnem zagonu so vsi odjavljeni.
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession();
 
@@ -180,6 +181,92 @@ app.MapDelete("/knjige/{knjigaId}", (int knjigaId, HttpContext ctx) =>
 
     var (uspeh, sporocilo) = Kosarica.BrisanjeKnjige(knjigaId);
     return uspeh ? Results.Ok(sporocilo) : Results.BadRequest(sporocilo);
+});
+
+// ---------------------------------------------------------
+// 7. PREGLED IZPOSOJ IN ZGODOVINA
+// Prikaže vse aktivne in zaključene izposoje prijavljenega uporabnika.
+// ---------------------------------------------------------
+app.MapGet("/izposoje", (HttpContext ctx) =>
+{
+    var id = ctx.Session.GetInt32("uid");
+    if (id == null) return Results.Unauthorized();
+
+    return Results.Ok(Knjiznica.PregledIzposoj(id.Value));
+});
+
+// ---------------------------------------------------------
+// 8. OPOMNIK O POTEKU ROKA
+// Prikaže izposoje, katerih rok poteče v naslednjih treh dneh,
+// in izposoje, katerih rok je že potekel.
+// ---------------------------------------------------------
+app.MapGet("/opomniki/roki", (HttpContext ctx) =>
+{
+    var id = ctx.Session.GetInt32("uid");
+    if (id == null) return Results.Unauthorized();
+
+    return Results.Ok(Knjiznica.PregledObvestil(id.Value));
+});
+
+// ---------------------------------------------------------
+// 9. PREGLED SEZNAMA ŽELIM PREBRATI
+// Prikaže knjige, ki jih je uporabnik dodal na svoj seznam.
+// ---------------------------------------------------------
+app.MapGet("/seznam-zelim-prebrati", (HttpContext ctx) =>
+{
+    var id = ctx.Session.GetInt32("uid");
+    if (id == null) return Results.Unauthorized();
+
+    return Results.Ok(Knjiznica.PregledSeznama(id.Value));
+});
+
+// ---------------------------------------------------------
+// 10. DODAJANJE KNJIGE NA SEZNAM ŽELIM PREBRATI
+// Id knjige je v naslovu zahtevka.
+// ---------------------------------------------------------
+app.MapPost("/seznam-zelim-prebrati/{knjigaId}", (int knjigaId, HttpContext ctx) =>
+{
+    var id = ctx.Session.GetInt32("uid");
+    if (id == null) return Results.Unauthorized();
+
+    var (uspeh, sporocilo) = Knjiznica.DodajNaSeznam(id.Value, knjigaId);
+
+    return uspeh
+        ? Results.Ok(sporocilo)
+        : Results.BadRequest(sporocilo);
+});
+
+// ---------------------------------------------------------
+// 11. ODSTRANJEVANJE KNJIGE S SEZNAMA ŽELIM PREBRATI
+// Id vnosa na seznamu je v naslovu zahtevka.
+// ---------------------------------------------------------
+app.MapDelete("/seznam-zelim-prebrati/{seznamId}", (int seznamId, HttpContext ctx) =>
+{
+    var id = ctx.Session.GetInt32("uid");
+    if (id == null) return Results.Unauthorized();
+
+    bool uspeh = Knjiznica.OdstraniIzSeznama(id.Value, seznamId);
+
+    return uspeh
+        ? Results.Ok("Knjiga je odstranjena s seznama.")
+        : Results.NotFound("Knjige ni na seznamu.");
+});
+
+// ---------------------------------------------------------
+// 12. PODALJŠANJE ROKA IZPOSOJE
+// Rok je mogoče podaljšati za 14 dni, če knjiga še ni vrnjena,
+// rok še ni potekel in izposoja še ni bila podaljšana.
+// ---------------------------------------------------------
+app.MapPut("/izposoje/{izposojaId}/podaljsaj", (int izposojaId, HttpContext ctx) =>
+{
+    var id = ctx.Session.GetInt32("uid");
+    if (id == null) return Results.Unauthorized();
+
+    var (uspeh, sporocilo) = Knjiznica.PodaljsajRok(id.Value, izposojaId);
+
+    return uspeh
+        ? Results.Ok(sporocilo)
+        : Results.BadRequest(sporocilo);
 });
 
 app.Run();
