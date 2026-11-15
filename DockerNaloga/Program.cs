@@ -107,6 +107,81 @@ app.MapDelete("/racun", ([FromBody] BrisanjeDto d, HttpContext ctx) =>
     return Results.Ok(sporocilo);
 });
 
+// ---------------------------------------------------------
+// NAKUP: dodaj knjigo v košarico
+// Telo zahtevka (JSON): knjigaId, kolicina (privzeto 1)
+// Potrebna je prijava (Id iz seje). Vrne 401, če ni prijavljen.
+// ---------------------------------------------------------
+app.MapPost("/kosarica", (DodajVKosaricoDto d, HttpContext ctx) =>
+{
+    var id = ctx.Session.GetInt32("uid");
+    if (id == null) return Results.Unauthorized();
+
+    var (uspeh, sporocilo) = Kosarica.DodajVKosarico(id.Value, d.KnjigaId, d.Kolicina);
+    return uspeh ? Results.Ok(sporocilo) : Results.BadRequest(sporocilo);
+});
+
+// ---------------------------------------------------------
+// PREGLED KOŠARICE: vrne postavke in skupno ceno
+// ---------------------------------------------------------
+app.MapGet("/kosarica", (HttpContext ctx) =>
+{
+    var id = ctx.Session.GetInt32("uid");
+    if (id == null) return Results.Unauthorized();
+
+    var (postavke, skupaj) = Kosarica.PregledKosarice(id.Value);
+    return Results.Ok(new { Postavke = postavke, Skupaj = skupaj });
+});
+
+// ---------------------------------------------------------
+// Odstrani knjigo iz košarice (Id knjige je v naslovu)
+// ---------------------------------------------------------
+app.MapDelete("/kosarica/{knjigaId}", (int knjigaId, HttpContext ctx) =>
+{
+    var id = ctx.Session.GetInt32("uid");
+    if (id == null) return Results.Unauthorized();
+
+    var (uspeh, sporocilo) = Kosarica.OdstraniIzKosarice(id.Value, knjigaId);
+    return uspeh ? Results.Ok(sporocilo) : Results.NotFound(sporocilo);
+});
+
+// ---------------------------------------------------------
+// NAKUP: zaključi naročilo (zmanjša zalogo, status 'oddano')
+// ---------------------------------------------------------
+app.MapPost("/narocilo", (HttpContext ctx) =>
+{
+    var id = ctx.Session.GetInt32("uid");
+    if (id == null) return Results.Unauthorized();
+
+    var (uspeh, sporocilo, narociloId) = Kosarica.ZakljuciNarocilo(id.Value);
+    return uspeh ? Results.Ok(new { sporocilo, narociloId }) : Results.BadRequest(sporocilo);
+});
+
+// ---------------------------------------------------------
+// PREKLIC NAROČILA: samo svoje naročilo v statusu 'oddano'. Zaloga se vrne.
+// ---------------------------------------------------------
+app.MapPost("/narocilo/{narociloId}/preklic", (int narociloId, HttpContext ctx) =>
+{
+    var id = ctx.Session.GetInt32("uid");
+    if (id == null) return Results.Unauthorized();
+
+    var (uspeh, sporocilo) = Kosarica.PreklicNarocila(id.Value, narociloId);
+    return uspeh ? Results.Ok(sporocilo) : Results.BadRequest(sporocilo);
+});
+
+// ---------------------------------------------------------
+// BRISANJE KNJIG: samo zaposleni. Knjige, ki je izposojena ali v naročilih, ne izbriše.
+// ---------------------------------------------------------
+app.MapDelete("/knjige/{knjigaId}", (int knjigaId, HttpContext ctx) =>
+{
+    var id = ctx.Session.GetInt32("uid");
+    if (id == null) return Results.Unauthorized();
+    if (!Kosarica.JeZaposleni(id.Value)) return Results.StatusCode(403);
+
+    var (uspeh, sporocilo) = Kosarica.BrisanjeKnjige(knjigaId);
+    return uspeh ? Results.Ok(sporocilo) : Results.BadRequest(sporocilo);
+});
+
 app.Run();
 
 // DTO-ji so preprosti razredi za podatke, ki jih odjemalec pošlje v JSON telesu zahtevka.
@@ -115,3 +190,5 @@ record PrijavaDto(string Email, string Geslo);
 record ProfilDto(string Ime, string Priimek, string Email);
 record PonastavitevDto(string Email, string NovoGeslo);
 record BrisanjeDto(string Geslo);
+
+record DodajVKosaricoDto(int KnjigaId, int Kolicina = 1);
