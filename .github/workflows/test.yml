@@ -1,0 +1,49 @@
+name: Unit testi
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Zagon testov
+        run: >
+          dotnet test DockerNaloga.Tests
+          --logger "trx;LogFileName=rezultati.trx"
+          --collect:"XPlat Code Coverage"
+          --results-directory ./TestResults
+
+      - name: Pokritost kode
+        if: always()
+        run: |
+          dotnet tool install -g dotnet-reportgenerator-globaltool
+          reportgenerator -reports:"TestResults/**/coverage.cobertura.xml" -targetdir:coverage -reporttypes:"TextSummary;Html"
+          cat coverage/Summary.txt
+
+      - name: Poročilo o testih
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Rezultati testov
+          path: TestResults/rezultati.trx
+          reporter: dotnet-trx
+
+      - name: Shrani poročilo o pokritosti
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pokritost-kode
+          path: coverage

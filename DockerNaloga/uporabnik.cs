@@ -1,5 +1,5 @@
 using System.Security.Cryptography;
-using MySql.Data.MySqlClient;
+using Microsoft.Data.Sqlite;
 
 namespace DockerNaloga;
 
@@ -16,8 +16,35 @@ public class Uporabnik
     // Povezava z bazo. Nastavi se enkrat ob zagonu v Program.cs.
     public static string Povezava { get; set; } = "";
 
+    // Ustvari tabelo Uporabnik v SQLite datoteki, če še ne obstaja.
+    // Kliče se enkrat ob zagonu (Program.cs), ker baze ne gostimo ločeno.
+    public static void Inicializiraj()
+{
+    using var con = new SqliteConnection(Povezava);
+    con.Open();
+
+    using (var pragma = con.CreateCommand())
+    {
+        pragma.CommandText = "PRAGMA journal_mode=WAL;";
+        pragma.ExecuteNonQuery();
+    }
+
+    using var cmd = con.CreateCommand();
+    cmd.CommandText = @"
+        CREATE TABLE IF NOT EXISTS Uporabnik (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+            Ime TEXT NOT NULL,
+            Priimek TEXT NOT NULL,
+            Email TEXT NOT NULL UNIQUE,
+            GesloHash TEXT NOT NULL,
+            Vloga TEXT NOT NULL DEFAULT 'stranka',
+            DatumRegistracije TEXT NOT NULL DEFAULT (datetime('now'))
+        );";
+    cmd.ExecuteNonQuery();
+}
+
     // 1. Registracija: preveri podatke, geslo zgosti in vstavi uporabnika v bazo.
-    // Podvojen email ujamemo prek UNIQUE indeksa (MySQL napaka 1062).
+    // Podvojen email ujamemo prek UNIQUE indeksa (SQLite koda 2067 = UNIQUE constraint).
     public static (bool Uspeh, string Sporocilo) Registracija(string ime, string priimek, string email, string geslo)
     {
         if (string.IsNullOrWhiteSpace(ime) || string.IsNullOrWhiteSpace(priimek) ||
@@ -28,9 +55,9 @@ public class Uporabnik
 
         try
         {
-            using var con = new MySqlConnection(Povezava);
+            using var con = new SqliteConnection(Povezava);
             con.Open();
-            using var cmd = new MySqlCommand(
+            using var cmd = new SqliteCommand(
                 "INSERT INTO Uporabnik (Ime, Priimek, Email, GesloHash) VALUES (@ime, @priimek, @email, @hash)", con);
             cmd.Parameters.AddWithValue("@ime", ime.Trim());
             cmd.Parameters.AddWithValue("@priimek", priimek.Trim());
@@ -39,7 +66,7 @@ public class Uporabnik
             cmd.ExecuteNonQuery();
             return (true, "Registracija uspešna.");
         }
-        catch (MySqlException ex) when (ex.Number == 1062)
+        catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == 2067)
         {
             return (false, "Email je že registriran.");
         }
@@ -68,9 +95,9 @@ public class Uporabnik
 
         try
         {
-            using var con = new MySqlConnection(Povezava);
+            using var con = new SqliteConnection(Povezava);
             con.Open();
-            using var cmd = new MySqlCommand(
+            using var cmd = new SqliteCommand(
                 "UPDATE Uporabnik SET Ime=@ime, Priimek=@priimek, Email=@email WHERE Id=@id", con);
             cmd.Parameters.AddWithValue("@ime", ime.Trim());
             cmd.Parameters.AddWithValue("@priimek", priimek.Trim());
@@ -79,7 +106,7 @@ public class Uporabnik
             cmd.ExecuteNonQuery();
             return (true, "Profil posodobljen.");
         }
-        catch (MySqlException ex) when (ex.Number == 1062)
+        catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == 2067)
         {
             return (false, "Email že uporablja drug uporabnik.");
         }
@@ -91,9 +118,9 @@ public class Uporabnik
         if (string.IsNullOrWhiteSpace(novoGeslo) || novoGeslo.Length < 8)
             return (false, "Geslo mora imeti vsaj 8 znakov.");
 
-        using var con = new MySqlConnection(Povezava);
+        using var con = new SqliteConnection(Povezava);
         con.Open();
-        using var cmd = new MySqlCommand("UPDATE Uporabnik SET GesloHash=@hash WHERE Email=@email", con);
+        using var cmd = new SqliteCommand("UPDATE Uporabnik SET GesloHash=@hash WHERE Email=@email", con);
         cmd.Parameters.AddWithValue("@hash", Zgosti(novoGeslo));
         cmd.Parameters.AddWithValue("@email", email.Trim().ToLower());
         return cmd.ExecuteNonQuery() > 0
@@ -102,16 +129,15 @@ public class Uporabnik
     }
 
     // 6. Brisanje računa: najprej preveri geslo, nato izbriše uporabnika.
-    // Povezane vrstice izbriše baza sama (ON DELETE CASCADE).
     public static (bool Uspeh, string Sporocilo) BrisanjeRacuna(int id, string geslo)
     {
         var u = NajdiPoId(id);
         if (u == null || !Preveri(geslo, u.GesloHash))
             return (false, "Napačno geslo.");
 
-        using var con = new MySqlConnection(Povezava);
+        using var con = new SqliteConnection(Povezava);
         con.Open();
-        using var cmd = new MySqlCommand("DELETE FROM Uporabnik WHERE Id=@id", con);
+        using var cmd = new SqliteCommand("DELETE FROM Uporabnik WHERE Id=@id", con);
         cmd.Parameters.AddWithValue("@id", id);
         cmd.ExecuteNonQuery();
         return (true, "Račun izbrisan.");
@@ -125,22 +151,22 @@ public class Uporabnik
     // Skupna iskalna metoda za NajdiPoId in NajdiPoEmailu. Parametri preprečijo SQL injection.
     private static Uporabnik? Najdi(string pogoj, object vrednost)
     {
-        using var con = new MySqlConnection(Povezava);
+        using var con = new SqliteConnection(Povezava);
         con.Open();
-        using var cmd = new MySqlCommand(
+        using var cmd = new SqliteCommand(
             "SELECT Id, Ime, Priimek, Email, GesloHash, Vloga, DatumRegistracije FROM Uporabnik WHERE " + pogoj, con);
         cmd.Parameters.AddWithValue("@p", vrednost);
         using var r = cmd.ExecuteReader();
         if (!r.Read()) return null;
         return new Uporabnik
         {
-            Id = r.GetInt32("Id"),
-            Ime = r.GetString("Ime"),
-            Priimek = r.GetString("Priimek"),
-            Email = r.GetString("Email"),
-            GesloHash = r.GetString("GesloHash"),
-            Vloga = r.GetString("Vloga"),
-            DatumRegistracije = r.GetDateTime("DatumRegistracije")
+            Id = r.GetInt32(0),
+            Ime = r.GetString(1),
+            Priimek = r.GetString(2),
+            Email = r.GetString(3),
+            GesloHash = r.GetString(4),
+            Vloga = r.GetString(5),
+            DatumRegistracije = DateTime.Parse(r.GetString(6))
         };
     }
 

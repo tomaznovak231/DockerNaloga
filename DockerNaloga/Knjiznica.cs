@@ -1,13 +1,13 @@
 
-using MySql.Data.MySqlClient;
+using Microsoft.Data.Sqlite;
 
 namespace DockerNaloga;
 
 public static class Knjiznica
 {
-    private static MySqlConnection Odpri()
+    private static SqliteConnection Odpri()
     {
-        var povezava = new MySqlConnection(Uporabnik.Povezava);
+        var povezava = new SqliteConnection(Uporabnik.Povezava);
         povezava.Open();
         return povezava;
     }
@@ -18,7 +18,7 @@ public static class Knjiznica
         var izposoje = new List<object>();
 
         using var povezava = Odpri();
-        using var ukaz = new MySqlCommand(
+        using var ukaz = new SqliteCommand(
             @"SELECT i.Id, i.KnjigaId, k.Naslov, k.Avtor,
                      i.DatumIzposoje, i.Rok, i.DatumVrnitve, i.Podaljsano
               FROM Izposoja i
@@ -34,16 +34,17 @@ public static class Knjiznica
         {
             izposoje.Add(new
             {
-                Id = bralnik.GetInt32("Id"),
-                KnjigaId = bralnik.GetInt32("KnjigaId"),
-                Naslov = bralnik.GetString("Naslov"),
-                Avtor = bralnik.GetString("Avtor"),
-                DatumIzposoje = bralnik.GetDateTime("DatumIzposoje"),
-                Rok = bralnik.GetDateTime("Rok"),
-                DatumVrnitve = bralnik.IsDBNull(bralnik.GetOrdinal("DatumVrnitve"))
+                Id = bralnik.GetInt32(bralnik.GetOrdinal("Id")),
+                KnjigaId = bralnik.GetInt32(bralnik.GetOrdinal("KnjigaId")),
+                Naslov = bralnik.GetString(bralnik.GetOrdinal("Naslov")),
+                Avtor = bralnik.GetString(bralnik.GetOrdinal("Avtor")),
+                DatumIzposoje = Convert.ToDateTime(bralnik["DatumIzposoje"]),
+                Rok = Convert.ToDateTime(bralnik["Rok"]),
+                DatumVrnitve = bralnik.IsDBNull(
+                    bralnik.GetOrdinal("DatumVrnitve"))
                     ? (DateTime?)null
-                    : bralnik.GetDateTime("DatumVrnitve"),
-                Podaljsano = bralnik.GetBoolean("Podaljsano")
+                    : Convert.ToDateTime(bralnik["DatumVrnitve"]),
+                Podaljsano = Convert.ToBoolean(bralnik["Podaljsano"])
             });
         }
 
@@ -56,15 +57,19 @@ public static class Knjiznica
         var obvestila = new List<object>();
 
         using var povezava = Odpri();
-        using var ukaz = new MySqlCommand(
+        using var ukaz = new SqliteCommand(
             @"SELECT i.Id, i.KnjigaId, k.Naslov, k.Avtor,
                      i.Rok,
-                     DATEDIFF(i.Rok, CURDATE()) AS DniDoRoka
+                     CAST(
+                         julianday(date(i.Rok)) -
+                         julianday(date('now', 'localtime'))
+                         AS INTEGER
+                     ) AS DniDoRoka
               FROM Izposoja i
               JOIN Knjiga k ON k.Id = i.KnjigaId
               WHERE i.UporabnikId = @u
                 AND i.DatumVrnitve IS NULL
-                AND i.Rok <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+                AND date(i.Rok) <= date('now', 'localtime', '+3 days')
               ORDER BY i.Rok ASC", povezava);
 
         ukaz.Parameters.AddWithValue("@u", uporabnikId);
@@ -73,15 +78,15 @@ public static class Knjiznica
 
         while (bralnik.Read())
         {
-            int dniDoRoka = bralnik.GetInt32("DniDoRoka");
+            int dniDoRoka = Convert.ToInt32(bralnik["DniDoRoka"]);
 
             obvestila.Add(new
             {
-                IzposojaId = bralnik.GetInt32("Id"),
-                KnjigaId = bralnik.GetInt32("KnjigaId"),
-                Naslov = bralnik.GetString("Naslov"),
-                Avtor = bralnik.GetString("Avtor"),
-                Rok = bralnik.GetDateTime("Rok"),
+                IzposojaId = bralnik.GetInt32(bralnik.GetOrdinal("Id")),
+                KnjigaId = bralnik.GetInt32(bralnik.GetOrdinal("KnjigaId")),
+                Naslov = bralnik.GetString(bralnik.GetOrdinal("Naslov")),
+                Avtor = bralnik.GetString(bralnik.GetOrdinal("Avtor")),
+                Rok = Convert.ToDateTime(bralnik["Rok"]),
                 DniDoRoka = dniDoRoka,
                 Sporocilo = dniDoRoka < 0
                     ? "Rok za vračilo knjige je potekel."
@@ -100,7 +105,7 @@ public static class Knjiznica
         var seznam = new List<object>();
 
         using var povezava = Odpri();
-        using var ukaz = new MySqlCommand(
+        using var ukaz = new SqliteCommand(
             @"SELECT s.id_seznam, s.KnjigaId, k.Naslov, k.Avtor,
                      k.Zanr, k.Leto, k.Cena
               FROM Seznam s
@@ -117,17 +122,23 @@ public static class Knjiznica
         {
             seznam.Add(new
             {
-                SeznamId = bralnik.GetInt32("id_seznam"),
-                KnjigaId = bralnik.GetInt32("KnjigaId"),
-                Naslov = bralnik.GetString("Naslov"),
-                Avtor = bralnik.GetString("Avtor"),
-                Zanr = bralnik.IsDBNull(bralnik.GetOrdinal("Zanr"))
+                SeznamId = bralnik.GetInt32(
+                    bralnik.GetOrdinal("id_seznam")),
+                KnjigaId = bralnik.GetInt32(
+                    bralnik.GetOrdinal("KnjigaId")),
+                Naslov = bralnik.GetString(
+                    bralnik.GetOrdinal("Naslov")),
+                Avtor = bralnik.GetString(
+                    bralnik.GetOrdinal("Avtor")),
+                Zanr = bralnik.IsDBNull(
+                    bralnik.GetOrdinal("Zanr"))
                     ? null
-                    : bralnik.GetString("Zanr"),
-                Leto = bralnik.IsDBNull(bralnik.GetOrdinal("Leto"))
+                    : bralnik.GetString(bralnik.GetOrdinal("Zanr")),
+                Leto = bralnik.IsDBNull(
+                    bralnik.GetOrdinal("Leto"))
                     ? (int?)null
-                    : bralnik.GetInt32("Leto"),
-                Cena = bralnik.GetDecimal("Cena")
+                    : Convert.ToInt32(bralnik["Leto"]),
+                Cena = Convert.ToDecimal(bralnik["Cena"])
             });
         }
 
@@ -140,7 +151,7 @@ public static class Knjiznica
     {
         using var povezava = Odpri();
 
-        using (var preveriKnjigo = new MySqlCommand(
+        using (var preveriKnjigo = new SqliteCommand(
             "SELECT COUNT(*) FROM Knjiga WHERE Id = @k", povezava))
         {
             preveriKnjigo.Parameters.AddWithValue("@k", knjigaId);
@@ -151,7 +162,7 @@ public static class Knjiznica
             }
         }
 
-        using (var preveriSeznam = new MySqlCommand(
+        using (var preveriSeznam = new SqliteCommand(
             @"SELECT COUNT(*) FROM Seznam
               WHERE UporabnikId = @u
                 AND KnjigaId = @k
@@ -166,7 +177,7 @@ public static class Knjiznica
             }
         }
 
-        using var ukaz = new MySqlCommand(
+        using var ukaz = new SqliteCommand(
             @"INSERT INTO Seznam (UporabnikId, KnjigaId, Tip)
               VALUES (@u, @k, 'zelim_prebrati')", povezava);
 
@@ -183,7 +194,7 @@ public static class Knjiznica
     {
         using var povezava = Odpri();
 
-        using var ukaz = new MySqlCommand(
+        using var ukaz = new SqliteCommand(
             @"DELETE FROM Seznam
               WHERE id_seznam = @s
                 AND UporabnikId = @u
@@ -201,11 +212,11 @@ public static class Knjiznica
     {
         using var povezava = Odpri();
 
-        string? datumVrnitve;
+        DateTime? datumVrnitve;
         DateTime rok;
         bool podaljsano;
 
-        using (var preveri = new MySqlCommand(
+        using (var preveri = new SqliteCommand(
             @"SELECT DatumVrnitve, Rok, Podaljsano
               FROM Izposoja
               WHERE Id = @i AND UporabnikId = @u", povezava))
@@ -223,10 +234,10 @@ public static class Knjiznica
             datumVrnitve = bralnik.IsDBNull(
                 bralnik.GetOrdinal("DatumVrnitve"))
                 ? null
-                : bralnik.GetDateTime("DatumVrnitve").ToString("yyyy-MM-dd");
+                : Convert.ToDateTime(bralnik["DatumVrnitve"]);
 
-            rok = bralnik.GetDateTime("Rok");
-            podaljsano = bralnik.GetBoolean("Podaljsano");
+            rok = Convert.ToDateTime(bralnik["Rok"]);
+            podaljsano = Convert.ToBoolean(bralnik["Podaljsano"]);
         }
 
         if (datumVrnitve != null)
@@ -244,15 +255,16 @@ public static class Knjiznica
             return (false, "Rok izposoje je bil že podaljšan.");
         }
 
-        using var ukaz = new MySqlCommand(
+        using var ukaz = new SqliteCommand(
             @"UPDATE Izposoja
-              SET Rok = DATE_ADD(Rok, INTERVAL 14 DAY),
+              SET Rok = date(Rok, '+14 days'),
                   Podaljsano = 1
               WHERE Id = @i
                 AND UporabnikId = @u
                 AND DatumVrnitve IS NULL
                 AND Podaljsano = 0
-                AND Rok >= CURDATE()", povezava);
+                AND date(Rok) >= date('now', 'localtime')",
+            povezava);
 
         ukaz.Parameters.AddWithValue("@i", izposojaId);
         ukaz.Parameters.AddWithValue("@u", uporabnikId);
