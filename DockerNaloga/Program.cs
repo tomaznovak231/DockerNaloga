@@ -18,6 +18,8 @@ var app = builder.Build();
 Uporabnik.Povezava = builder.Configuration.GetConnectionString("Default")
     ?? throw new Exception("Manjka ConnectionStrings:Default");
 
+Uporabnik.Inicializiraj();
+
 // Vklopi sejo. Mora biti pred endpointi.
 app.UseSession();
 

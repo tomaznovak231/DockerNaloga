@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="MySql.Data" Version="26.10.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
   </ItemGroup>
 
 </Project>

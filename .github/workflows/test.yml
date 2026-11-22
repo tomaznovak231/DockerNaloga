@@ -6,28 +6,11 @@ on:
 
 permissions:
   contents: read
-  checks: write   # potrebno za dorny/test-reporter
+  checks: write
 
 jobs:
   test:
     runs-on: ubuntu-latest
-
-    # Testi uporabljajo pravo MySQL bazo, zato jo GitHub zažene kot storitev.
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
-
-    env:
-      TEST_CONNECTION: "Server=127.0.0.1;Port=3306;Database=knjige;Uid=root;Pwd=root;SslMode=Disabled;AllowPublicKeyRetrieval=true"
 
     steps:
       - uses: actions/checkout@v4
@@ -35,9 +18,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 9.0.x
-
-      - name: Ustvari bazo iz BAZA/knjige.sql
-        run: mysql -h 127.0.0.1 -uroot -proot < BAZA/knjige.sql
 
       - name: Zagon testov
         run: >

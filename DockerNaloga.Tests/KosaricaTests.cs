@@ -1,5 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using MySql.Data.MySqlClient;
+using Microsoft.Data.Sqlite;
 
 namespace DockerNaloga.Tests;
 
@@ -9,30 +9,32 @@ namespace DockerNaloga.Tests;
 public class KosaricaTests
 {
     // ----- pomožne metode -----
-    private static MySqlConnection Odpri()
-    {
-        var c = new MySqlConnection(Uporabnik.Povezava);
-        c.Open();
-        return c;
-    }
+private static SqliteConnection Odpri()
+{
+    var c = new SqliteConnection(Uporabnik.Povezava);
+    c.Open();
+    return c;
+}
 
     // Izvede SQL in vrne Id vstavljene vrstice.
-    private static long Izvedi(string sql, params object[] p)
-    {
-        using var c = Odpri();
-        using var cmd = new MySqlCommand(sql, c);
-        for (int i = 0; i < p.Length; i++) cmd.Parameters.AddWithValue("@p" + i, p[i]);
-        cmd.ExecuteNonQuery();
-        return cmd.LastInsertedId;
-    }
+private static long Izvedi(string sql, params object[] p)
+{
+    using var c = Odpri();
+    using var cmd = new SqliteCommand(sql, c);
+    for (int i = 0; i < p.Length; i++) cmd.Parameters.AddWithValue("@p" + i, p[i]);
+    cmd.ExecuteNonQuery();
 
-    private static object? Skalar(string sql, params object[] p)
-    {
-        using var c = Odpri();
-        using var cmd = new MySqlCommand(sql, c);
-        for (int i = 0; i < p.Length; i++) cmd.Parameters.AddWithValue("@p" + i, p[i]);
-        return cmd.ExecuteScalar();
-    }
+    using var idCmd = new SqliteCommand("SELECT last_insert_rowid();", c);
+    return (long)(idCmd.ExecuteScalar() ?? 0L);
+}
+
+private static object? Skalar(string sql, params object[] p)
+{
+    using var c = Odpri();
+    using var cmd = new SqliteCommand(sql, c);
+    for (int i = 0; i < p.Length; i++) cmd.Parameters.AddWithValue("@p" + i, p[i]);
+    return cmd.ExecuteScalar();
+}
 
     private static int NovUporabnik(string vloga = "stranka") =>
         (int)Izvedi(
@@ -238,7 +240,7 @@ public class KosaricaTests
     {
         var u = NovUporabnik();
         var k = NovaKnjiga(1);
-        Izvedi("INSERT INTO Izposoja (UporabnikId, KnjigaId, DatumIzposoje, Rok) VALUES (@p0,@p1,CURDATE(),CURDATE())", u, k);
+        Izvedi("INSERT INTO Izposoja (UporabnikId, KnjigaId, DatumIzposoje, Rok) VALUES (@p0,@p1,date('now'),date('now'))", u, k);
 
         var r = Kosarica.BrisanjeKnjige(k);
         Assert.IsFalse(r.uspeh);
