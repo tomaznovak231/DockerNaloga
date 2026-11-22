@@ -6,7 +6,20 @@ on:
       - main
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Zagon testov
+        run: dotnet test DockerNaloga.Tests
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
