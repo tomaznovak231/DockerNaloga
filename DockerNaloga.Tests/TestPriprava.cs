@@ -1,3 +1,4 @@
+
 using Microsoft.Data.Sqlite;
 
 namespace DockerNaloga.Tests;
@@ -17,6 +18,24 @@ public class TestPriprava
 
         Uporabnik.Inicializiraj();
         Kosarica.Inicializiraj();
+
+        using var povezava = new SqliteConnection(Uporabnik.Povezava);
+        povezava.Open();
+
+        using var ukaz = povezava.CreateCommand();
+
+        ukaz.CommandText = @"
+            CREATE TABLE IF NOT EXISTS Seznam (
+                id_seznam INTEGER PRIMARY KEY AUTOINCREMENT,
+                UporabnikId INTEGER NOT NULL,
+                KnjigaId INTEGER NOT NULL,
+                Tip TEXT NOT NULL,
+                FOREIGN KEY (UporabnikId) REFERENCES Uporabnik(Id),
+                FOREIGN KEY (KnjigaId) REFERENCES Knjiga(Id)
+            );
+        ";
+
+        ukaz.ExecuteNonQuery();
     }
 
     [AssemblyCleanup]
